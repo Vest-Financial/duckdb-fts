@@ -1,65 +1,24 @@
 #
-# This workflow calls the main distribution pipeline from DuckDB to build, test and (optionally) release the extension
+# VestBrain lockstep candidate v2: fts a2 artifact (short-hash version string) (the SHA
+# upstream duckdb-vss declares — the vector extension is the interface-
+# coupled one, so its pin LEADS; core 8806a9f proved unbuildable for any
+# vss commit: QualifiedName rename lands before it, index-interface rework
+# after). Build-only, linux_amd64 only.
 #
 name: Main Extension Distribution Pipeline
 on:
-  push:
-  pull_request:
   workflow_dispatch:
 
 concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}-${{ github.head_ref || '' }}-${{ github.base_ref || '' }}-${{ github.ref != 'refs/heads/main' || github.sha }}
+  group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
-  # Pin the duckdb build to the commit our submodule references (.github/duckdb-version), instead of
-  # tracking duckdb main — otherwise upstream-main API drift breaks CI on changes unrelated to this repo.
-  get-duckdb-version:
-    name: Get DuckDB version
-    runs-on: ubuntu-latest
-    outputs:
-      duckdb_version: ${{ steps.version.outputs.duckdb_version }}
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          sparse-checkout: .github
-      - id: version
-        run: echo "duckdb_version=$(cat .github/duckdb-version)" >> "$GITHUB_OUTPUT"
-
-  duckdb-stable-build:
-    name: Build extension binaries
-    needs: get-duckdb-version
+  duckdb-candidate-build:
+    name: Build fts a2 artifact (short-hash version string)
     uses: duckdb/extension-ci-tools/.github/workflows/_extension_distribution.yml@main
     with:
-      duckdb_version: ${{ needs.get-duckdb-version.outputs.duckdb_version }}
-      ci_tools_version: main
       extension_name: fts
-
-  fts-regression:
-    name: FTS regression benchmarks
-    uses: ./.github/workflows/Regression.yml
-    with:
-      git_ref: ${{ github.sha }}
-
-  duckdb-stable-deploy:
-    name: Deploy extension binaries
-    needs:
-      - get-duckdb-version
-      - duckdb-stable-build
-      - fts-regression
-    uses: duckdb/extension-ci-tools/.github/workflows/_extension_deploy.yml@main
-    secrets: inherit
-    with:
-      duckdb_version: ${{ needs.get-duckdb-version.outputs.duckdb_version }}
+      duckdb_version: a00803f768
       ci_tools_version: main
-      extension_name: fts
-
-  code-quality-check:
-    name: Code Quality Check
-    needs: get-duckdb-version
-    uses: duckdb/extension-ci-tools/.github/workflows/_extension_code_quality.yml@main
-    with:
-      duckdb_version: ${{ needs.get-duckdb-version.outputs.duckdb_version }}
-      ci_tools_version: main
-      extension_name: fts
-      format_checks: 'format;tidy'
+      exclude_archs: "wasm_mvp;wasm_eh;wasm_threads;windows_amd64_mingw;windows_amd64;osx_amd64;osx_arm64;linux_arm64;linux_amd64_musl"
