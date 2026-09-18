@@ -8,6 +8,7 @@
 
 #pragma once
 
+#include "duckdb/function/function.hpp"
 #include "duckdb/main/client_context.hpp"
 
 namespace duckdb {
