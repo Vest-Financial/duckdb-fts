@@ -1,0 +1,44 @@
+name: Forward review activity to pr-tracker
+
+# Runs on the default branch WITH secrets (workflow_run always does, even when the
+# run it reacts to had none). The triggering review run gave us nothing we trust,
+# so we derive the PR number from GitHub-supplied fields (head_sha / head_repo) and
+# send only that hint; pr-tracker pulls the actual reviews from the API.
+
+on:
+  workflow_run:
+    workflows: ["Review relay"]
+    types: [completed]
+
+permissions:
+  contents: read
+
+jobs:
+  forward:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Resolve PR number and dispatch
+        env:
+          # Look up the PR with the built-in token (it can read its own repo); the
+          # dispatch to pr-tracker uses the scoped PAT.
+          GITHUB_LOOKUP_TOKEN: ${{ github.token }}
+          DISPATCH_TOKEN: ${{ secrets.PR_DISPATCH_TOKEN }}
+          REPO: ${{ github.repository }}
+          HEAD_SHA: ${{ github.event.workflow_run.head_sha }}
+          HEAD_REPO: ${{ github.event.workflow_run.head_repository.full_name }}
+        run: |
+          set -euo pipefail
+          if ! [[ "$HEAD_SHA" =~ ^[0-9a-f]{40}$ ]]; then
+            echo "unexpected head_sha ($HEAD_SHA); skipping"; exit 0
+          fi
+          # Tolerate a lookup miss (e.g. the commit is gone) — skip, don't fail red.
+          number=$(GH_TOKEN="$GITHUB_LOOKUP_TOKEN" gh api "/repos/$REPO/commits/$HEAD_SHA/pulls" 2>/dev/null \
+            | jq -r --arg head "$HEAD_REPO" 'map(select(.head.repo.full_name==$head))|.[0].number // empty' || true)
+          if ! [[ "$number" =~ ^[0-9]+$ ]]; then
+            echo "no PR for $HEAD_SHA (head $HEAD_REPO); skipping"; exit 0
+          fi
+          jq -n --arg repo "$REPO" --argjson number "$number" \
+            '{event_type: "pr-event", client_payload: {
+               event: "review_activity", repo: $repo, number: $number
+             }}' \
+          | GH_TOKEN="$DISPATCH_TOKEN" gh api -X POST /repos/duckdblabs/pr-tracker/dispatches --input -
