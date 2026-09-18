@@ -34,7 +34,7 @@ static QualifiedName GetQualifiedName(ClientContext &context,
             context, qname.Catalog());
     if (!default_schema) {
       throw BinderException(
-          "Catalog "%s" has no default schema - specify a schema explicitly",
+          "Catalog \"%s\" has no default schema - specify a schema explicitly",
           qname.Catalog());
     }
     schema_path.push_back(*default_schema);
